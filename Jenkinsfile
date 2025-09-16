@@ -3,7 +3,7 @@ def BRANCH         = "main"
 def REPO_URL       = "https://github.com/abimsyaefulloh/be-dumbmerch.git"
 def SERVER         = "Abim22@103.175.220.38"          // GatewayServer (BE)
 def CREDENTIALS_ID = "finaltask"
-def REMOTE_DIR     = "/opt/be-dumbmerch"
+def REMOTE_DIR     = "/home/Abim22/be-dumbmerch"
 def IMAGE_NAME     = "be-dumbmerch-staging"
 def CONTAINER_NAME = "be-dumbmerch-staging"
 def HOST_PORT      = "5002"                           // sesuai nginx staging
@@ -36,7 +36,7 @@ pipeline {
                 git -C ${REMOTE_DIR} checkout ${BRANCH}
                 git -C ${REMOTE_DIR} reset --hard origin/${BRANCH}
               else
-                rm -rf ${REMOTE_DIR}/*
+                rm -rf ${REMOTE_DIR}
                 git clone -b ${BRANCH} ${REPO_URL} ${REMOTE_DIR}
               fi
             '
@@ -121,3 +121,4 @@ pipeline {
     }
   }
 }
+
