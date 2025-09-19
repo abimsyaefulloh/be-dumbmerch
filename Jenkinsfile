@@ -1,5 +1,5 @@
 // === BE STAGING (simple seperti wayshub) ===
-def branch     = "main"
+def branch     = "Staging"
 def remote     = "origin"
 def repo_url   = "https://github.com/abimsyaefulloh/be-dumbmerch.git"
 
@@ -96,3 +96,4 @@ EOF
     }
   }
 }
+
