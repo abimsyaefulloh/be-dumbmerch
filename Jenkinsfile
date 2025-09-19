@@ -1,22 +1,20 @@
 // === BE PRODUCTION (tanpa clone di server, pakai HOME) ===
-def branch        = "production"                          // ganti ke "main" kalau branch utama main
+def branch        = "production"                        // ganti ke "main" kalau branch utama main
 def server        = "Abim22@103.175.220.38"
 def cred          = "finaltask"
 
-def directory     = "/home/Abim22/be-dumbmerch-prod"      // <= pakai HOME, bukan /opt
-def image         = "be-dumbmerch-prod"                   // beda dari staging
-def container     = "be-dumbmerch-prod"                   // beda dari staging
-def host_port     = "5000"                                // port host PROD
-def app_port      = "5000"                                // port di dalam container
+def directory     = "/home/Abim22/be-dumbmerch-prod"    // folder KHUSUS prod
+def image         = "be-dumbmerch-prod"                 // image prod
+def container     = "be-dumbmerch-prod"                 // container prod
+def host_port     = "5000"
+def app_port      = "5000"
 
 pipeline {
   agent any
   options { timestamps() }
 
   stages {
-    stage('Checkout (SCM)') {
-      steps { checkout scm }
-    }
+    stage('Checkout (SCM)') { steps { checkout scm } }
 
     stage('Repo Sync (copy workspace -> server)') {
       steps {
@@ -24,8 +22,7 @@ pipeline {
           sh """
             set -e
             ssh -o StrictHostKeyChecking=no ${server} 'mkdir -p ${directory}'
-            # kirim source dari workspace Jenkins (tanpa .git & node_modules)
-            tar --exclude='.git' --exclude='node_modules' -C "${WORKSPACE}" -cf - . | \
+            tar --exclude='.git' --exclude='node_modules' -C "${WORKSPACE}" -cf - . | \\
               ssh -o StrictHostKeyChecking=no ${server} 'tar -C ${directory} -xf -'
           """
         }
@@ -57,14 +54,15 @@ pipeline {
               # Hentikan container prod lama (kalau ada)
               docker rm -f ${container} >/dev/null 2>&1 || true
 
-              # Jaga-jaga: kalau ada container LAIN yang masih pakai port 5000, matikan juga
-              OLD=\$(docker ps --format "{{.ID}} {{.Names}} {{.Ports}}" | awk "/0.0.0.0:${host_port}->|:::${host_port}->/ {print \\$2}")
-              if [ -n "\$OLD" ]; then
-                echo "Found container using port ${host_port}: \$OLD — removing it..."
-                docker rm -f "\$OLD" || true
+              # Cari container lain (nama apa pun) yang publish port ${host_port} dan stop
+              OLD=\$(docker ps --format "{{.ID}} {{.Names}} {{.Ports}}" \\
+                 | sed -n "/0.0.0.0:${host_port}->\\|:::${host_port}->/ s/ .*//p")
+              if [ -n "\\\$OLD" ]; then
+                echo "Found container using port ${host_port}: \\$OLD — removing it..."
+                docker rm -f "\\\$OLD" || true
               fi
 
-              # (Opsional) tulis .env produksi kalau aplikasi kamu baca file itu
+              # (Opsional) tulis .env produksi
               cat > ${directory}/.env <<EOT
 PORT=${app_port}
 # DB_HOST=...
