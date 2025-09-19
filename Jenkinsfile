@@ -1,22 +1,22 @@
-// === BE PRODUCTION (tanpa clone di server, aman bareng staging) ===
-def branch        = "production"
+// === BE PRODUCTION (tanpa clone di server, pakai HOME) ===
+def branch        = "production"                          // ganti ke "main" kalau branch utama main
 def server        = "Abim22@103.175.220.38"
-def cred          = "finaltask"                       // Jenkins SSH Credentials ID
+def cred          = "finaltask"
 
-// Pakai direktori terpisah dari staging!
-def directory     = "/opt/be-dumbmerch-prod"
-
-def image         = "be-dumbmerch-prod"               // beda dari staging
-def container     = "be-dumbmerch-prod"               // beda dari staging
-def host_port     = "5000"                            // port host untuk produksi
-def app_port      = "5000"                            // port di dalam container
+def directory     = "/home/Abim22/be-dumbmerch-prod"      // <= pakai HOME, bukan /opt
+def image         = "be-dumbmerch-prod"                   // beda dari staging
+def container     = "be-dumbmerch-prod"                   // beda dari staging
+def host_port     = "5000"                                // port host PROD
+def app_port      = "5000"                                // port di dalam container
 
 pipeline {
   agent any
   options { timestamps() }
 
   stages {
-    stage('Checkout (SCM)') { steps { checkout scm } }
+    stage('Checkout (SCM)') {
+      steps { checkout scm }
+    }
 
     stage('Repo Sync (copy workspace -> server)') {
       steps {
@@ -24,28 +24,15 @@ pipeline {
           sh """
             set -e
             ssh -o StrictHostKeyChecking=no ${server} 'mkdir -p ${directory}'
-            # kirim isi workspace ke server, exclude .git biar ringan
-            tar --exclude='.git' -C "${WORKSPACE}" -cf - . | \
+            # kirim source dari workspace Jenkins (tanpa .git & node_modules)
+            tar --exclude='.git' --exclude='node_modules' -C "${WORKSPACE}" -cf - . | \
               ssh -o StrictHostKeyChecking=no ${server} 'tar -C ${directory} -xf -'
           """
         }
       }
     }
 
-    stage('Docker Clean (only PROD container/image)') {
-      steps {
-        sshagent([cred]) {
-          sh """
-            ssh -o StrictHostKeyChecking=no ${server} '
-              docker rm -f ${container} >/dev/null 2>&1 || true
-              docker rmi -f ${image}    >/dev/null 2>&1 || true
-            '
-          """
-        }
-      }
-    }
-
-    stage('Docker Build') {
+    stage('Docker Build (prod)') {
       steps {
         sshagent([cred]) {
           sh """
@@ -53,21 +40,31 @@ pipeline {
               set -e
               cd ${directory}
               docker build -t ${image}:${branch} .
-              # tag latest-prod optional
-              docker tag ${image}:${branch} ${image}:latest
+              docker tag  ${image}:${branch} ${image}:latest
             '
           """
         }
       }
     }
 
-    stage('Docker Run') {
+    stage('Docker Run (prod)') {
       steps {
         sshagent([cred]) {
           sh """
             ssh -o StrictHostKeyChecking=no ${server} '
               set -e
-              # .env PRODUKSI — isi/ubah sesuai kebutuhanmu
+
+              # Hentikan container prod lama (kalau ada)
+              docker rm -f ${container} >/dev/null 2>&1 || true
+
+              # Jaga-jaga: kalau ada container LAIN yang masih pakai port 5000, matikan juga
+              OLD=\$(docker ps --format "{{.ID}} {{.Names}} {{.Ports}}" | awk "/0.0.0.0:${host_port}->|:::${host_port}->/ {print \\$2}")
+              if [ -n "\$OLD" ]; then
+                echo "Found container using port ${host_port}: \$OLD — removing it..."
+                docker rm -f "\$OLD" || true
+              fi
+
+              # (Opsional) tulis .env produksi kalau aplikasi kamu baca file itu
               cat > ${directory}/.env <<EOT
 PORT=${app_port}
 # DB_HOST=...
@@ -76,12 +73,25 @@ PORT=${app_port}
 # DB_PASSWORD=abim123
 # DB_NAME=dumbmerch
 EOT
-              docker rm -f ${container} >/dev/null 2>&1 || true
+
               docker run -d --name ${container} \\
                 -p ${host_port}:${app_port} \\
                 -v ${directory}/.env:/app/.env:ro \\
                 --restart unless-stopped \\
                 ${image}:${branch}
+            '
+          """
+        }
+      }
+    }
+
+    stage('Smoke test') {
+      steps {
+        sshagent([cred]) {
+          sh """
+            ssh -o StrictHostKeyChecking=no ${server} '
+              set -e
+              curl -fsS -I http://127.0.0.1:${host_port} | head -n1
             '
           """
         }
