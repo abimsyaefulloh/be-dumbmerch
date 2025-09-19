@@ -1,13 +1,15 @@
-// === BE STAGING (tanpa clone di server) ===
-def branch        = "staging"
+// === BE PRODUCTION (tanpa clone di server, aman bareng staging) ===
+def branch        = "production"
 def server        = "Abim22@103.175.220.38"
-def cred          = "finaltask"                 // SSH credentials ID ke server
-def directory     = "/home/Abim22/be-dumbmerch"
+def cred          = "finaltask"                       // Jenkins SSH Credentials ID
 
-def image         = "be-dumbmerch-staging"
-def container     = "be-dumbmerch-staging"
-def host_port     = "5002"
-def app_port      = "5000"
+// Pakai direktori terpisah dari staging!
+def directory     = "/opt/be-dumbmerch-prod"
+
+def image         = "be-dumbmerch-prod"               // beda dari staging
+def container     = "be-dumbmerch-prod"               // beda dari staging
+def host_port     = "5000"                            // port host untuk produksi
+def app_port      = "5000"                            // port di dalam container
 
 pipeline {
   agent any
@@ -30,7 +32,7 @@ pipeline {
       }
     }
 
-    stage('Docker Clean') {
+    stage('Docker Clean (only PROD container/image)') {
       steps {
         sshagent([cred]) {
           sh """
@@ -50,7 +52,9 @@ pipeline {
             ssh -o StrictHostKeyChecking=no ${server} '
               set -e
               cd ${directory}
-              docker build -t ${image} .
+              docker build -t ${image}:${branch} .
+              # tag latest-prod optional
+              docker tag ${image}:${branch} ${image}:latest
             '
           """
         }
@@ -63,7 +67,7 @@ pipeline {
           sh """
             ssh -o StrictHostKeyChecking=no ${server} '
               set -e
-              # .env minimal (ISI VAR DB DI SINI KALAU PERLU)
+              # .env PRODUKSI — isi/ubah sesuai kebutuhanmu
               cat > ${directory}/.env <<EOT
 PORT=${app_port}
 # DB_HOST=...
@@ -77,7 +81,7 @@ EOT
                 -p ${host_port}:${app_port} \\
                 -v ${directory}/.env:/app/.env:ro \\
                 --restart unless-stopped \\
-                ${image}
+                ${image}:${branch}
             '
           """
         }
@@ -85,4 +89,3 @@ EOT
     }
   }
 }
-
