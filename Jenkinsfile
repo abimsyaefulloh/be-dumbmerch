@@ -1,9 +1,9 @@
 // === BE PRODUCTION (tanpa clone di server, pakai HOME) ===
-def branch        = "production"                        // ganti ke "main" kalau branch utama main
+def branch        = "production"                        // ganti ke "main" jika perlu
 def server        = "Abim22@103.175.220.38"
 def cred          = "finaltask"
 
-def directory     = "/home/Abim22/be-dumbmerch-prod"    // folder KHUSUS prod
+def directory     = "/home/Abim22/be-dumbmerch-prod"    // folder KHUSUS prod (beda dgn staging)
 def image         = "be-dumbmerch-prod"                 // image prod
 def container     = "be-dumbmerch-prod"                 // container prod
 def host_port     = "5000"
@@ -51,18 +51,17 @@ pipeline {
             ssh -o StrictHostKeyChecking=no ${server} '
               set -e
 
-              # Hentikan container prod lama (kalau ada)
+              # 1) Matikan container prod lama (kalau ada)
               docker rm -f ${container} >/dev/null 2>&1 || true
 
-              # Cari container lain (nama apa pun) yang publish port ${host_port} dan stop
-              OLD=\$(docker ps --format "{{.ID}} {{.Names}} {{.Ports}}" \\
-                 | sed -n "/0.0.0.0:${host_port}->\\|:::${host_port}->/ s/ .*//p")
-              if [ -n "\\\$OLD" ]; then
-                echo "Found container using port ${host_port}: \\$OLD — removing it..."
-                docker rm -f "\\\$OLD" || true
+              # 2) Kalau ADA container lain yang publish port ${host_port}, hapus juga (hindari "port is already allocated")
+              CONFLICTS=\\\$(docker ps --filter "publish=${host_port}" -q)
+              if [ -n "\\\$CONFLICTS" ]; then
+                echo "Removing containers on port ${host_port}: \\$CONFLICTS"
+                docker rm -f \\$CONFLICTS || true
               fi
 
-              # (Opsional) tulis .env produksi
+              # 3) (Opsional) tulis .env produksi kalau app kamu baca file ini
               cat > ${directory}/.env <<EOT
 PORT=${app_port}
 # DB_HOST=...
@@ -72,6 +71,7 @@ PORT=${app_port}
 # DB_NAME=dumbmerch
 EOT
 
+              # 4) Jalankan container prod
               docker run -d --name ${container} \\
                 -p ${host_port}:${app_port} \\
                 -v ${directory}/.env:/app/.env:ro \\
