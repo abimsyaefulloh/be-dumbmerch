@@ -1,69 +1,84 @@
 // === BE PRODUCTION (tanpa clone di server, pakai HOME) ===
-def branch        = "production"                        // ganti ke "main" jika perlu
-def server        = "Abim22@103.175.220.38"
-def cred          = "finaltask"
+def branch     = "production"                        // ganti "main" kalau branch utama main
+def server     = "Abim22@103.175.220.38"
+def cred       = "finaltask"
 
-def directory     = "/home/Abim22/be-dumbmerch-prod"    // folder KHUSUS prod (beda dgn staging)
-def image         = "be-dumbmerch-prod"                 // image prod
-def container     = "be-dumbmerch-prod"                 // container prod
-def host_port     = "5000"
-def app_port      = "5000"
+def directory  = "/home/Abim22/be-dumbmerch-prod"    // folder KHUSUS prod (beda dari staging)
+def image      = "be-dumbmerch-prod"                 // image prod
+def container  = "be-dumbmerch-prod"                 // container prod
+def host_port  = "5000"
+def app_port   = "5000"
 
 pipeline {
   agent any
   options { timestamps() }
 
   stages {
-    stage('Checkout (SCM)') { steps { checkout scm } }
+    stage('Checkout (SCM)') {
+      steps { checkout scm }
+    }
 
     stage('Repo Sync (copy workspace -> server)') {
       steps {
-        sshagent([cred]) {
-          sh """
-            set -e
-            ssh -o StrictHostKeyChecking=no ${server} 'mkdir -p ${directory}'
-            tar --exclude='.git' --exclude='node_modules' -C "${WORKSPACE}" -cf - . | \\
-              ssh -o StrictHostKeyChecking=no ${server} 'tar -C ${directory} -xf -'
-          """
+        withEnv(["SERVER=${server}", "DIRECTORY=${directory}"]) {
+          sshagent([cred]) {
+            sh '''set -e
+ssh -o StrictHostKeyChecking=no "$SERVER" "mkdir -p '$DIRECTORY'"
+# kirim source dari workspace (tanpa .git & node_modules)
+tar --exclude='.git' --exclude='node_modules' -C "$WORKSPACE" -cf - . | \
+  ssh -o StrictHostKeyChecking=no "$SERVER" "tar -C '$DIRECTORY' -xf -"
+'''
+          }
         }
       }
     }
 
     stage('Docker Build (prod)') {
       steps {
-        sshagent([cred]) {
-          sh """
-            ssh -o StrictHostKeyChecking=no ${server} '
-              set -e
-              cd ${directory}
-              docker build -t ${image}:${branch} .
-              docker tag  ${image}:${branch} ${image}:latest
-            '
-          """
+        withEnv(["SERVER=${server}", "DIRECTORY=${directory}", "IMAGE=${image}", "BRANCH=${branch}"]) {
+          sshagent([cred]) {
+            sh '''set -e
+ssh -o StrictHostKeyChecking=no "$SERVER" bash -lc '
+  set -e
+  cd "$DIRECTORY"
+  docker build -t "$IMAGE:$BRANCH" .
+  docker tag "$IMAGE:$BRANCH" "$IMAGE:latest"
+'
+'''
+          }
         }
       }
     }
 
     stage('Docker Run (prod)') {
       steps {
-        sshagent([cred]) {
-          sh """
-            ssh -o StrictHostKeyChecking=no ${server} '
-              set -e
+        withEnv([
+          "SERVER=${server}",
+          "DIRECTORY=${directory}",
+          "IMAGE=${image}",
+          "CONTAINER=${container}",
+          "HOST_PORT=${host_port}",
+          "APP_PORT=${app_port}",
+          "BRANCH=${branch}"
+        ]) {
+          sshagent([cred]) {
+            sh '''set -e
+ssh -o StrictHostKeyChecking=no "$SERVER" bash -lc '
+  set -e
 
-              # 1) Matikan container prod lama (kalau ada)
-              docker rm -f ${container} >/dev/null 2>&1 || true
+  # 1) stop container prod lama (kalau ada)
+  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 
-              # 2) Kalau ADA container lain yang publish port ${host_port}, hapus juga (hindari "port is already allocated")
-              CONFLICTS=\\\$(docker ps --filter "publish=${host_port}" -q)
-              if [ -n "\\\$CONFLICTS" ]; then
-                echo "Removing containers on port ${host_port}: \\$CONFLICTS"
-                docker rm -f \\$CONFLICTS || true
-              fi
+  # 2) jika ada container lain yang publish port $HOST_PORT, hapus juga
+  CONFLICTS=$(docker ps --filter "publish=$HOST_PORT" -q)
+  if [ -n "$CONFLICTS" ]; then
+    echo "Removing containers on port $HOST_PORT: $CONFLICTS"
+    docker rm -f $CONFLICTS || true
+  fi
 
-              # 3) (Opsional) tulis .env produksi kalau app kamu baca file ini
-              cat > ${directory}/.env <<EOT
-PORT=${app_port}
+  # 3) (opsional) tulis .env produksi jika app membaca file ini
+  cat > "$DIRECTORY/.env" <<EOT
+PORT=$APP_PORT
 # DB_HOST=...
 # DB_PORT=5432
 # DB_USER=abim
@@ -71,27 +86,28 @@ PORT=${app_port}
 # DB_NAME=dumbmerch
 EOT
 
-              # 4) Jalankan container prod
-              docker run -d --name ${container} \\
-                -p ${host_port}:${app_port} \\
-                -v ${directory}/.env:/app/.env:ro \\
-                --restart unless-stopped \\
-                ${image}:${branch}
-            '
-          """
+  # 4) run container prod
+  docker run -d --name "$CONTAINER" \
+    -p "$HOST_PORT:$APP_PORT" \
+    -v "$DIRECTORY/.env:/app/.env:ro" \
+    --restart unless-stopped \
+    "$IMAGE:$BRANCH"
+'
+'''
+          }
         }
       }
     }
 
     stage('Smoke test') {
       steps {
-        sshagent([cred]) {
-          sh """
-            ssh -o StrictHostKeyChecking=no ${server} '
-              set -e
-              curl -fsS -I http://127.0.0.1:${host_port} | head -n1
-            '
-          """
+        withEnv(["SERVER=${server}", "HOST_PORT=${host_port}"]) {
+          sshagent([cred]) {
+            sh '''set -e
+ssh -o StrictHostKeyChecking=no "$SERVER" \
+  "curl -fsS -I http://127.0.0.1:$HOST_PORT | head -n1"
+'''
+          }
         }
       }
     }
