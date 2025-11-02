@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  backend:
+    build: .
+    container_name: be-dumbmerch-backend
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+    restart: always
+
+  postgres:
+    image: postgres:14-alpine
+    container_name: db
+    environment:
+      POSTGRES_USER: abim
+      POSTGRES_PASSWORD: abim123
+      POSTGRES_DB: dumbmerch
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
