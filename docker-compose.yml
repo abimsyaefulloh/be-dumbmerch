@@ -6,9 +6,12 @@ services:
     ports:
       - "5000:5000"
     env_file:
-      - .env
+      - .env  # Jika .env ada di host, ini akan di-load
+    environment:  # Tambahan: Set PORT explicitly
+      PORT: "5000"  # Pastikan server bind ke port 5000
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     restart: always
 
   postgres:
@@ -22,6 +25,12 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U abim -d dumbmerch"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
   pgdata:
