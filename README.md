@@ -30,5 +30,5 @@ Repo ini berisi API untuk autentikasi, manajemen produk, dan transaksi, yang lan
    - Backend API: http://localhost:5000
    - Database: localhost:5432
    ```
-4. Author
+4. Author  
    Bootcamp Project – Dumbways Indonesia
