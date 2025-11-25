@@ -21,4 +21,14 @@ Repo ini berisi API untuk autentikasi, manajemen produk, dan transaksi, yang lan
    git clone https://github.com/abimsyaefulloh/be-dumbmerch.git
    cd be-dumbmerch
    ```
-2. 
+2. Jalankan dengan Docker Compose:
+   ```bash
+   docker-compose up -d
+   ```
+3. Service akan otomatis berjalan di:
+   ```bash
+   - Backend API: http://localhost:5000
+   - Database: localhost:5432
+   ```
+4. Author
+   Bootcamp Project – Dumbways Indonesia
